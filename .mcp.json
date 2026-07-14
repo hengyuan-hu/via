@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "sphinx2": {
+      "command": ".venv/bin/python",
+      "args": ["via/mcp_server.py"]
+    }
+  }
+}

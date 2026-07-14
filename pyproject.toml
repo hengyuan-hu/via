@@ -1,0 +1,71 @@
+[project]
+name = "via"
+version = "0.1.0"
+description = "Visual Interface Agent for Robot Control"
+readme = "README.md"
+requires-python = ">=3.10,<3.11"
+dependencies = [
+    "h5py==3.8.0",
+    "imageio==2.34.2",
+    "matplotlib==3.6.0",
+    "mujoco==3.2.0",
+    "msgpack==1.0.8",
+    "numpy==1.23.5",
+    "open3d==0.18.0",
+    "opencv-python==4.7.0.68",
+    "playwright==1.60.0",
+    "pyrallis==0.3.1",
+    "robosuite==1.4.1",
+    "scipy==1.10.1",
+    "tabulate==0.9.0",
+    "torch==2.3.1",
+    "torchvision==0.18.1",
+    "wandb==0.17.5",
+    "websockets>=14.0",
+    # MCP server deps (via/mcp_server.py).
+    "mcp==1.27.2",
+    "httpx==0.28.1",
+    # LIBERO env-runtime deps. LIBERO itself is vendored as a git submodule on
+    # PYTHONPATH (see set_env.sh), so its requirements.txt never gets installed.
+    # These are the subset record_sim's import chain needs to build sim envs;
+    # the policy-training stack (robomimic/transformers/hydra/thop/einops) is
+    # intentionally omitted.
+    "bddl==1.0.1",
+    "gym==0.25.2",
+    "future==0.18.2",
+    "easydict==1.9",
+    "cloudpickle==2.1.0",
+]
+
+[project.urls]
+Repository = "https://github.com/hengyuan-hu/via"
+
+[dependency-groups]
+dev = ["black==22.12.0"]
+
+[tool.black]
+line-length = 100
+
+# torch/torchvision are pulled from PyTorch's own indexes so the same lock works
+# on both platforms: CUDA 12.1 wheels on Linux (GPU), CPU/MPS wheels on macOS.
+# cu121 (not cu124) because this repo targets NVIDIA driver 535 / CUDA 12.2,
+# and cu124 wheels require driver >= 550.
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", marker = "sys_platform == 'darwin'" },
+    { index = "pytorch-cu121", marker = "sys_platform == 'linux'" },
+]
+torchvision = [
+    { index = "pytorch-cpu", marker = "sys_platform == 'darwin'" },
+    { index = "pytorch-cu121", marker = "sys_platform == 'linux'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu121"
+url = "https://download.pytorch.org/whl/cu121"
+explicit = true

@@ -1,0 +1,1375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="data:,">
+  <title>Robot Control Interface</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%%; height: 100%%; }
+    body {
+      overflow: hidden; background: #05070d;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    }
+    canvas { display: block; }
+
+    #app-shell {
+      display: grid;
+      grid-template-columns: minmax(260px, 3fr) minmax(0, 9fr);
+      width: 100vw;
+      height: 100vh;
+      background: #05070d;
+    }
+    #sidebar {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 12px;
+      overflow-y: auto;
+      background: #080b13;
+      border-right: 1px solid rgba(255,255,255,0.09);
+    }
+    #viewport {
+      position: relative;
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+      background: #000;
+    }
+    #viewport canvas { width: 100%%; height: 100%%; }
+
+    .panel {
+      position: relative;
+      width: 100%%;
+      background: rgba(10, 12, 20, 0.80);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255,255,255,0.09);
+      border-radius: 8px;
+      color: #e2e8f0;
+    }
+
+    /* Title */
+    #status-panel {
+      padding: 10px 12px; min-width: 0;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    }
+    #status-title {
+      font-size: 16px; font-weight: 700; letter-spacing: 0.3px;
+      color: rgba(255,255,255,0.9);
+    }
+
+    /* Primary actions */
+    #action-panel { padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+    .btn {
+      width: 100%%; border: none; border-radius: 8px; padding: 11px 10px;
+      font-size: 13px; font-weight: 600; font-family: inherit;
+      cursor: pointer; letter-spacing: 0.2px;
+      transition: filter 0.12s, transform 0.1s;
+    }
+    .btn:hover  { filter: brightness(1.15); transform: translateY(-1px); }
+    .btn:active { filter: brightness(0.92); transform: translateY(0); }
+    #btn-record        { background: #2563eb; color: #fff; }
+    #btn-record.flash  { background: #16a34a; }
+    #btn-end           { background: #b91c1c; color: #fff; }
+
+    /* Legend */
+    #legend-panel { display: none; padding: 10px 12px; max-width: none; margin-top: auto; }
+    #legend-toggle-btn {
+      background: none; border: none; font-family: inherit;
+      color: rgba(255,255,255,0.5); font-size: 12px; cursor: pointer;
+      display: flex; align-items: center; gap: 6px;
+      text-transform: uppercase; letter-spacing: 0.5px; padding: 0; width: 100%%;
+    }
+    #legend-toggle-btn:hover { color: #fff; }
+    #legend-body { display: none; margin-top: 12px; }
+    #legend-body.open { display: block; }
+    .leg-section { margin-bottom: 11px; }
+    .leg-section:last-child { margin-bottom: 0; }
+    .leg-heading {
+      font-size: 9px; text-transform: uppercase; letter-spacing: 1.2px;
+      color: rgba(255,255,255,0.28); margin-bottom: 6px;
+    }
+    .leg-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 2px 0; gap: 10px;
+    }
+    .kbd { display: inline-flex; gap: 3px; flex-shrink: 0; }
+    .kbd span {
+      background: rgba(255,255,255,0.09); border: 1px solid rgba(255,255,255,0.17);
+      border-radius: 4px; padding: 1px 6px; font-size: 11px;
+      font-family: 'SF Mono', 'Fira Code', monospace; color: #e2e8f0; line-height: 1.5;
+    }
+    .leg-desc { font-size: 12px; color: rgba(255,255,255,0.55); text-align: right; }
+
+    /* Camera feed panel */
+    #cam-panel { padding: 10px 12px 8px; }
+    #cam-header {
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 8px;
+    }
+    #cam-title {
+      font-size: 13px; text-transform: uppercase; letter-spacing: 1.2px;
+      color: rgba(255,255,255,0.9);
+    }
+    #cam-feeds { display: flex; flex-direction: column; gap: 10px; }
+    .cam-feed { display: flex; flex-direction: column; gap: 4px; }
+    .cam-label {
+      font-size: 13px; text-transform: uppercase; letter-spacing: 1px;
+      color: rgba(255,255,255,0.9); text-align: center;
+    }
+    .cam-img {
+      width: 100%%; aspect-ratio: 1; border-radius: 6px;
+      background: rgba(255,255,255,0.05); object-fit: cover;
+      border: 1px solid rgba(255,255,255,0.08);
+      cursor: crosshair;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="app-shell">
+    <aside id="sidebar">
+      <!-- Title -->
+      <div id="status-panel" class="panel">
+        <div id="status-title">Robot Control UI</div>
+      </div>
+
+      <!-- Primary actions -->
+      <div id="action-panel" class="panel">
+        <button id="btn-record" class="btn">Execute Waypoint</button>
+        <button id="btn-end"    class="btn">End Episode</button>
+      </div>
+
+      <!-- Camera feeds -->
+      <div id="cam-panel" class="panel">
+        <div id="cam-header">
+          <span id="cam-title">Camera Feeds</span>
+        </div>
+        <div id="cam-feeds">
+          <div class="cam-feed">
+            <div class="cam-label">3rd-person view</div>
+            <img id="cam-agentview" class="cam-img" />
+          </div>
+          <div class="cam-feed">
+            <div class="cam-label">wrist view</div>
+            <img id="cam-wrist" class="cam-img" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Controls legend -->
+      <div id="legend-panel" class="panel">
+        <button id="legend-toggle-btn">&#x2328;&nbsp; Controls &nbsp;&#x25B8;</button>
+        <div id="legend-body">
+          <div class="leg-section">
+            <div class="leg-heading">Camera</div>
+            <div class="leg-row"><span class="kbd"><span>Left-drag empty view</span></span> <span class="leg-desc">Orbit</span></div>
+            <div class="leg-row"><span class="kbd"><span>Right/middle-drag</span></span> <span class="leg-desc">Pan</span></div>
+            <div class="leg-row"><span class="kbd"><span>Scroll</span></span> <span class="leg-desc">Zoom</span></div>
+            <div class="leg-row"><span class="kbd"><span>h</span></span> <span class="leg-desc">Home view</span></div>
+          </div>
+          <div class="leg-section">
+            <div class="leg-heading">Position</div>
+            <div class="leg-row"><span class="kbd"><span>s</span><span>+ click cloud</span></span> <span class="leg-desc">Place gripper</span></div>
+            <div class="leg-row"><span class="kbd"><span>Click camera feed</span></span> <span class="leg-desc">Place from image</span></div>
+            <div class="leg-row"><span class="kbd"><span>Drag gripper</span></span> <span class="leg-desc">Free move</span></div>
+            <div class="leg-row"><span class="kbd"><span>x</span><span>+ drag</span></span> <span class="leg-desc">X axis only</span></div>
+            <div class="leg-row"><span class="kbd"><span>y</span><span>+ drag</span></span> <span class="leg-desc">Y axis only</span></div>
+            <div class="leg-row"><span class="kbd"><span>z</span><span>+ drag</span></span> <span class="leg-desc">Z axis (vertical)</span></div>
+            <div class="leg-row"><span class="kbd"><span>p</span><span>+ drag</span></span> <span class="leg-desc">Horizontal plane</span></div>
+            <div class="leg-row"><span class="kbd"><span>a</span></span> <span class="leg-desc">Show approach axis</span></div>
+            <div class="leg-row"><span class="kbd"><span>f</span><span>/</span><span>b</span></span> <span class="leg-desc">Forward / Back</span></div>
+            <div class="leg-row"><span class="kbd"><span>c</span></span> <span class="leg-desc">Snap to click</span></div>
+          </div>
+          <div class="leg-section">
+            <div class="leg-heading">Orientation</div>
+            <div class="leg-row"><span class="kbd"><span>r</span></span> <span class="leg-desc">Rotation mode</span></div>
+            <div class="leg-row"><span class="kbd"><span>x/y/z</span><span>angle</span><span>&#x21B5;</span></span> <span class="leg-desc">Rotate by °</span></div>
+            <div class="leg-row"><span class="kbd"><span>Esc</span></span> <span class="leg-desc">Exit rotation</span></div>
+            <div class="leg-row"><span class="kbd"><span>q</span><span>(hold)</span></span> <span class="leg-desc">Peek gizmo + approach axis</span></div>
+          </div>
+          <div class="leg-section">
+            <div class="leg-heading">Gripper</div>
+            <div class="leg-row"><span class="kbd"><span>g</span></span> <span class="leg-desc">Toggle open / closed</span></div>
+            <div class="leg-row"><span class="kbd"><span>t</span></span> <span class="leg-desc">Reset to real gripper</span></div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <main id="viewport"></main>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three/examples/js/loaders/OBJLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three/examples/js/controls/TransformControls.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/msgpack-lite/0.1.26/msgpack.min.js"></script>
+
+  <script>
+    // Port leads the window title so parallel-run windows stay distinguishable in the
+    // OS title bar / dock even when truncated (location.port = this stack's base port).
+    document.title = (location.port ? ':' + location.port + ' — ' : '') + 'Robot Control UI';
+
+    // ── Legend toggle ─────────────────────────────────────────────────────────
+    const legendToggleBtn = document.getElementById('legend-toggle-btn');
+    const legendBody      = document.getElementById('legend-body');
+    legendToggleBtn.addEventListener('click', () => {
+      const open = legendBody.classList.toggle('open');
+      legendToggleBtn.innerHTML = open
+        ? '&#x2328;&nbsp; Controls &nbsp;&#x25BE;'
+        : '&#x2328;&nbsp; Controls &nbsp;&#x25B8;';
+    });
+
+    // ── Status helpers ────────────────────────────────────────────────────────
+    // The Mode indicator UI was removed; setMode is kept as a no-op so the
+    // rotation/translation call sites don't need to change.
+    function setMode(label, color) {}
+    // ── Three.js scene ────────────────────────────────────────────────────────
+    var demoDone = false;
+
+    const viewportEl = document.getElementById('viewport');
+    function getViewportSize() {
+      const rect = viewportEl.getBoundingClientRect();
+      return {
+        width: Math.max(1, Math.floor(rect.width)),
+        height: Math.max(1, Math.floor(rect.height)),
+      };
+    }
+    const initialViewport = getViewportSize();
+
+    const scene  = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(
+      45,
+      initialViewport.width / initialViewport.height,
+      0.1,
+      1000
+    );
+    camera.position.copy(new THREE.Vector3(%s * 7, 7, 0));
+    // Tilt the initial view 15 deg about the annotated Y axis (green arrow =
+    // world -Z) for a slightly more side-on look: elevation 45 deg -> 30 deg.
+    camera.position.applyAxisAngle(new THREE.Vector3(0, 0, -1), 15 * Math.PI / 180);
+    const cameraTarget = new THREE.Vector3(0, 0, 0);
+    window.cameraTarget = cameraTarget;
+    let cameraTargetInitialized = false;
+    camera.lookAt(cameraTarget);
+    const cameraHomePosition = camera.position.clone();
+    const cameraHomeTarget = cameraTarget.clone();
+
+    function saveCameraHome() {
+      cameraHomePosition.copy(camera.position);
+      cameraHomeTarget.copy(cameraTarget);
+    }
+
+    function resetCameraView() {
+      camera.position.copy(cameraHomePosition);
+      cameraTarget.copy(cameraHomeTarget);
+      camera.lookAt(cameraTarget);
+    }
+
+    function maybeInitializeCameraTarget(posArray) {
+      if (cameraTargetInitialized || !posArray || posArray.length < 3) return;
+      let minX = Infinity, minY = Infinity, minZ = Infinity;
+      let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+      for (let i = 0; i < posArray.length; i += 3) {
+        const x = posArray[i], y = posArray[i + 1], z = posArray[i + 2];
+        if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+        minX = Math.min(minX, x); minY = Math.min(minY, y); minZ = Math.min(minZ, z);
+        maxX = Math.max(maxX, x); maxY = Math.max(maxY, y); maxZ = Math.max(maxZ, z);
+      }
+      const span = Math.max(maxX - minX, maxY - minY, maxZ - minZ);
+      if (!Number.isFinite(span) || span < 1e-3) return;
+
+      const nextTarget = new THREE.Vector3(
+        (minX + maxX) * 0.5,
+        (minY + maxY) * 0.5,
+        (minZ + maxZ) * 0.5
+      );
+      const delta = nextTarget.clone().sub(cameraTarget);
+      cameraTarget.copy(nextTarget);
+      camera.position.add(delta);
+      camera.lookAt(cameraTarget);
+      saveCameraHome();
+      cameraTargetInitialized = true;
+    }
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    renderer.setSize(initialViewport.width, initialViewport.height);
+    renderer.setClearColor(0x000000);
+    // renderFrame() clears manually so it can draw the main pass and then the
+    // corner orientation gizmo as a second, scissored pass on top.
+    renderer.autoClear = false;
+    renderer.domElement.style.visibility = 'hidden';
+    viewportEl.appendChild(renderer.domElement);
+
+    function resizeRenderer() {
+      const size = getViewportSize();
+      camera.aspect = size.width / size.height;
+      camera.updateProjectionMatrix();
+      renderer.setSize(size.width, size.height);
+    }
+    window.addEventListener('resize', resizeRenderer);
+    if (window.ResizeObserver) new ResizeObserver(resizeRenderer).observe(viewportEl);
+
+    function makeAxisLabel(text, color) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 96;
+      canvas.height = 64;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = 'rgba(5, 7, 13, 0.72)';
+      ctx.fillRect(15, 9, 66, 46);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 4;
+      ctx.strokeRect(15, 9, 66, 46);
+      ctx.font = '700 34px Segoe UI, system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = color;
+      ctx.fillText(text, 48, 32);
+
+      const texture = new THREE.CanvasTexture(canvas);
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: texture,
+        transparent: true,
+        depthTest: false,
+      }));
+      sprite.scale.set(0.62, 0.42, 1);
+      return sprite;
+    }
+
+    // ── World-frame orientation gizmo (corner overlay) ────────────────────────
+    // A small axis triad pinned to the top-right corner of the viewport. It
+    // lives in its own scene and is drawn by renderFrame() as a second pass
+    // after the main scene (CAD/Blender-style nav gizmo), so the reference frame
+    // conveys orientation without ever overlapping or cutting through the
+    // table-top point cloud. The gizmo camera's orientation is synced to the
+    // main camera every frame.
+    // Robot axes in UI coordinates: robot X -> UI +X, robot Y -> UI -Z,
+    // robot Z -> UI +Y.
+    const gizmoScene = new THREE.Scene();
+    const gizmoAxisLen = 1.0;
+    // Build each arrow from a solid cylinder shaft + a smooth (24-segment) cone
+    // head rather than THREE.ArrowHelper, whose 1px line + low-poly 5-sided cone
+    // look truncated / faceted when an axis is viewed edge-on or foreshortened.
+    // Geometry is built along +Y, then rotated so +Y aligns with `dir`.
+    function makeAxisArrow(dir, color) {
+      const headLen = 0.3, shaftLen = gizmoAxisLen - headLen;
+      const mat = new THREE.MeshBasicMaterial({ color });
+      const shaft = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.035, 0.035, shaftLen, 16), mat);
+      shaft.position.y = shaftLen / 2;
+      const head = new THREE.Mesh(
+        new THREE.ConeGeometry(0.11, headLen, 24), mat);
+      head.position.y = shaftLen + headLen / 2;
+      const arrow = new THREE.Group();
+      arrow.add(shaft, head);
+      arrow.quaternion.setFromUnitVectors(
+        new THREE.Vector3(0, 1, 0), dir.clone().normalize());
+      return arrow;
+    }
+    gizmoScene.add(makeAxisArrow(new THREE.Vector3(1, 0, 0), 0xff4444));
+    gizmoScene.add(makeAxisArrow(new THREE.Vector3(0, 0, -1), 0x22c55e));
+    gizmoScene.add(makeAxisArrow(new THREE.Vector3(0, 1, 0), 0x3b82f6));
+    const xLabel = makeAxisLabel('X', '#ff6b6b');
+    xLabel.position.set(gizmoAxisLen + 0.38, 0, 0);
+    const yLabel = makeAxisLabel('Y', '#4ade80');
+    yLabel.position.set(0, 0, -gizmoAxisLen - 0.38);
+    const zLabel = makeAxisLabel('Z', '#60a5fa');
+    zLabel.position.set(0, gizmoAxisLen + 0.38, 0);
+    gizmoScene.add(xLabel, yLabel, zLabel);
+    const originSphere = new THREE.Mesh(
+      new THREE.SphereGeometry(0.1, 16, 12),
+      new THREE.MeshBasicMaterial({ color: 0xe5e7eb })
+    );
+    gizmoScene.add(originSphere);
+
+    // Orthographic gizmo camera (no perspective distortion). Its orientation is
+    // matched to the main camera each frame in renderFrame(); for an ortho
+    // camera only the viewing direction matters, so the distance is arbitrary.
+    const GIZMO_VIEW = 1.85;     // ortho half-extent in world units (fits axes + labels)
+    const GIZMO_CAM_DIST = 5;    // gizmo camera distance from the triad origin
+    const GIZMO_SIZE = 396;      // on-screen size of the square overlay (px)
+    const GIZMO_MARGIN = 14;     // gap from the viewport's top/right edges (px)
+    const gizmoCamera = new THREE.OrthographicCamera(
+      -GIZMO_VIEW, GIZMO_VIEW, GIZMO_VIEW, -GIZMO_VIEW, 0.1, 100
+    );
+    const _gizmoDir = new THREE.Vector3();
+
+    // Renders the main scene, then the corner orientation gizmo on top of it.
+    // Used by both the animation loop and the screenshot path, so MCP
+    // screenshots include the gizmo as well.
+    function renderFrame() {
+      const size = getViewportSize();
+      renderer.clear();
+      renderer.setViewport(0, 0, size.width, size.height);
+      renderer.setScissorTest(false);
+      renderer.render(scene, camera);
+
+      // gl viewport origin is bottom-left, so the top-right corner is at
+      // (W - size - margin, H - size - margin).
+      const gx = size.width  - GIZMO_SIZE - GIZMO_MARGIN;
+      const gy = size.height - GIZMO_SIZE - GIZMO_MARGIN;
+      renderer.setViewport(gx, gy, GIZMO_SIZE, GIZMO_SIZE);
+      renderer.setScissor(gx, gy, GIZMO_SIZE, GIZMO_SIZE);
+      renderer.setScissorTest(true);
+      renderer.clearDepth();   // float the gizmo over the scene (scissored to the corner)
+      camera.getWorldDirection(_gizmoDir);
+      gizmoCamera.position.copy(_gizmoDir).multiplyScalar(-GIZMO_CAM_DIST);
+      gizmoCamera.up.copy(camera.up);
+      gizmoCamera.lookAt(0, 0, 0);
+      renderer.render(gizmoScene, gizmoCamera);
+      renderer.setScissorTest(false);
+    }
+
+    // Red marker for last click position
+    const cubeMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.12, 16, 12),
+      new THREE.MeshBasicMaterial({ color: 0xff4444 })
+    );
+    cubeMesh.position.set(-10, -10, -10);
+    cubeMesh.visible = false;
+    scene.add(cubeMesh);
+
+    // ── State ─────────────────────────────────────────────────────────────────
+    let selectedObject    = null;
+    let transformControl  = null;
+    let isTranslationMode = true;
+    let isMouseDown       = false;
+    let isRightMouseDown  = false;
+    let isMiddleMouseDown = false;
+    let isDraggingEmpty   = false;    // left-dragging on empty space → orbit
+    let mouseDownX        = 0;
+    let mouseDownY        = 0;
+    const controlPoints   = [];
+    const meshUrls        = [];
+
+    let rotationMode      = false;
+    let rotationAxis      = null;
+    let currentAngleInput = '';
+    let camInfo           = {};  // camera K/E per label, populated from websocket
+    let lastFingertipUI   = null; // real EE/fingertip pos (UI frame), paired with camInfo
+    let lastEeEulerUI     = null; // real EE orientation (UI-frame euler), paired with camInfo
+    let lastGripperAction = null; // real gripper action ([closed?]: 1=closed, 0=open)
+
+    const arrowHelper = new THREE.ArrowHelper(
+      new THREE.Vector3(1, 0, 0), new THREE.Vector3(), 1.3, 0xFFA500, 0.6
+    );
+    arrowHelper.visible = false;
+    scene.add(arrowHelper);
+
+    let guideCylinder = null;
+    (function() {
+      guideCylinder = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.07, 0.07, 3, 32),
+        new THREE.MeshBasicMaterial({ color: 0xADD8E6, transparent: true, opacity: 0.5 })
+      );
+      guideCylinder.visible = false;
+      scene.add(guideCylinder);
+    })();
+
+    function updateGuideCylinder(visible) {
+      if (!guideCylinder) return;
+      guideCylinder.visible = visible && !!selectedObject;
+      if (visible && selectedObject) {
+        guideCylinder.position.copy(selectedObject.position);
+        guideCylinder.rotation.copy(selectedObject.rotation);
+      }
+    }
+
+    // ── Point cloud ───────────────────────────────────────────────────────────
+    const numPoints = %s;
+    const pcGeo = new THREE.BufferGeometry();
+    pcGeo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(numPoints * 3), 3));
+    pcGeo.setAttribute('color',    new THREE.Float32BufferAttribute(new Float32Array(numPoints * 3), 3));
+    const pointCloud = new THREE.Points(pcGeo, new THREE.PointsMaterial({ size: 0.1, vertexColors: true }));
+    scene.add(pointCloud);
+
+    // Invisible instanced boxes used for raycasting against point cloud positions
+    const numBoxes = 5000;
+    const instancedBoxes = new THREE.InstancedMesh(
+      new THREE.BoxGeometry(0.14, 0.14, 0.14),
+      new THREE.MeshBasicMaterial({ visible: false }),
+      numBoxes
+    );
+    scene.add(instancedBoxes);
+
+    function updateInstancedMeshPositions() {
+      const pos = pointCloud.geometry.attributes.position;
+      const count = Math.min(numBoxes, pos.count);
+      const step = Math.max(1, Math.floor(pos.count / count));
+      const mat = new THREE.Matrix4();
+      for (let i = 0; i < count; i++) {
+        const idx = Math.min(i * step, pos.count - 1);
+        mat.setPosition(pos.getX(idx), pos.getY(idx), pos.getZ(idx));
+        instancedBoxes.setMatrixAt(i, mat);
+      }
+      instancedBoxes.instanceMatrix.needsUpdate = true;
+    }
+
+    // ── Gripper mesh management ───────────────────────────────────────────────
+    function refreshGripperOpacity() {
+      controlPoints.forEach(obj => {
+        if (!obj.material) return;
+        const active = obj === selectedObject;
+        // Blue matches the Execute Waypoint button; lighter blue for inactive
+        // waypoints so they recede but stay identifiable.
+        obj.material.color.set(active ? 0x2563eb : 0x93c5fd);
+        obj.material.transparent = !active;
+        obj.material.opacity     = active ? 1.0 : 0.18;
+        obj.material.depthTest   = !active;   // active gripper ignores depth → always on top
+        obj.material.needsUpdate = true;
+        obj.renderOrder          = active ? 999 : 0;
+      });
+    }
+
+    function addObject(obj, index, url) {
+      selectedObject = obj;
+      scene.add(obj);
+      if (index === -1) { controlPoints.push(obj); meshUrls.push(url); }
+      else              { controlPoints[index] = obj; meshUrls[index] = url; }
+      refreshGripperOpacity();
+    }
+
+    let curvePath = null;
+    function updateCurvePath() {
+      if (controlPoints.length > 1) {
+        const pts = new THREE.CatmullRomCurve3(controlPoints.map(p => p.position)).getPoints(50);
+        if (curvePath) {
+          curvePath.geometry.dispose();
+          curvePath.geometry = new THREE.BufferGeometry().setFromPoints(pts);
+        } else {
+          curvePath = new THREE.Line(
+            new THREE.BufferGeometry().setFromPoints(pts),
+            new THREE.LineBasicMaterial({ color: 0xffa500 })
+          );
+          scene.add(curvePath);
+        }
+      } else if (curvePath) {
+        scene.remove(curvePath);
+        curvePath = null;
+      }
+    }
+
+    // Control-point indices with an open/closed gripper swap in flight. The swap
+    // fetches + parses an OBJ asynchronously, so we ignore overlapping swap
+    // requests on the same control point (e.g. rapid 'g' presses) which otherwise
+    // race and can leave the gripper with its mesh removed and no replacement.
+    const swapPending = new Set();
+
+    // Loads `url` and places the mesh at index. When `oldObject` is given this is a
+    // swap: the old mesh is removed only after the new one is ready (load-then-swap),
+    // so a failed or empty load never leaves the scene with no gripper mesh.
+    function loadObject(url, position, rotation, index, oldObject = null) {
+      const isSwap = oldObject !== null;
+      if (isSwap) {
+        if (swapPending.has(index)) return;  // a swap for this gripper is already running
+        swapPending.add(index);
+      }
+      const done = () => { if (isSwap) swapPending.delete(index); };
+      new THREE.OBJLoader().load(
+        url,
+        obj => {
+          let mesh = null;
+          obj.traverse(child => { if (!mesh && child instanceof THREE.Mesh) mesh = child; });
+          if (!mesh) {
+            console.error('loadObject: no mesh found in', url, '- keeping current gripper');
+            done();
+            return;
+          }
+          mesh.scale.set(6.85, 6.85, 6.85);
+          mesh.geometry.computeBoundingSphere();
+          mesh.geometry.computeBoundingBox();
+          mesh.position.copy(position);
+          mesh.quaternion.setFromEuler(rotation);
+          // Flat blue matching the Execute Waypoint button.
+          // MeshBasic ignores lighting so the color stays vivid.
+          mesh.material = new THREE.MeshBasicMaterial({ color: 0x2563eb });
+          if (oldObject) scene.remove(oldObject);  // swap in only once the replacement exists
+          addObject(mesh.clone(), index, url);
+          updateCurvePath();
+          done();
+        },
+        undefined,
+        err => {
+          console.error('loadObject failed for', url, err, '- keeping current gripper');
+          done();
+        }
+      );
+    }
+
+    const initialPos  = %s;
+    const initialRot  = %s;
+    const gripperName = %s;
+    // Robot-frame z-offset for UI transforms (record_sim.py injects this; 0.8
+    // for robomimic, 0.9 for LIBERO — matches the tabletop in each sim).
+    const UI_Z_OFFSET = %s;
+    loadObject('http://localhost:8100/' + gripperName + '.obj', initialPos, initialRot, -1);
+
+    setTimeout(() => updateCurvePath(), 1000);
+
+    function moveSelectedObjectToPos(position) {
+      if (!selectedObject) return;
+      const offset = new THREE.Vector3(0, 0.7, 0).applyQuaternion(selectedObject.quaternion);
+      selectedObject.position.set(
+        position.x + offset.x,
+        position.y + offset.y,
+        position.z + offset.z
+      );
+      updateCurvePath();
+    }
+
+    // Translate the gripper along its approach axis so the fingertip
+    // lands at the last click target plus a small overshoot — useful for
+    // diving in to grasp. UI units (1 = 0.1 m).
+    //
+    // The fingertip offset is the gripper mesh's bottom along local +Y,
+    // taken from the geometry bounding box (franka ≈ 0.08, robotiq ≈ 0.13 UI).
+    // Don't confuse this with the 0.7 hover distance used by `placeGripper`:
+    // that's the position-to-click offset, not the position-to-fingertip offset.
+    function snapForwardToClick(overshootUI = 0.25) {
+      if (!selectedObject) return false;
+      if (cubeMesh.position.x < -5) return false;
+      const forward = new THREE.Vector3(0, -1, 0).applyQuaternion(selectedObject.quaternion);
+      selectedObject.geometry.computeBoundingBox();
+      const fingerOffset = -selectedObject.geometry.boundingBox.min.y * selectedObject.scale.y;
+      const fingertip = selectedObject.position.clone().addScaledVector(forward, fingerOffset);
+      const d = cubeMesh.position.clone().sub(fingertip).dot(forward) + overshootUI;
+      selectedObject.position.addScaledVector(forward, d);
+      updateCurvePath();
+      return true;
+    }
+    window.snapForwardToClick = snapForwardToClick;
+
+    // ── Raycasting ────────────────────────────────────────────────────────────
+    function buildRaycaster(event) {
+      const r = new THREE.Raycaster();
+      const rect = renderer.domElement.getBoundingClientRect();
+      r.setFromCamera(new THREE.Vector2(
+        ((event.clientX - rect.left) / rect.width)  * 2 - 1,
+        -((event.clientY - rect.top)  / rect.height) * 2 + 1
+      ), camera);
+      return r;
+    }
+
+    // Returns true if the ray hits the gripper mesh (drag-to-move), false → orbit.
+    function hitsGripper(event) {
+      if (!selectedObject) return false;
+      const raycaster = buildRaycaster(event);
+      selectedObject.updateMatrixWorld(true);
+      return raycaster.intersectObject(selectedObject, false).length > 0;
+    }
+
+    // Pick the point-cloud vertex hit by a ray (origin O, *unit* direction D).
+    // Goal: the nearest surface the ray crosses (so a foreground object wins over
+    // the table behind it), AND the most ray-centered point on that surface (so
+    // the marker lands under the crosshair, not biased toward the camera-facing
+    // edge). Two cheap O(N) passes over the full cloud (~100k pts):
+    //   1. nearest in-front depth among vertices within PICK_RADIUS of the ray
+    //      line (the "cylinder"), plus a global min-perpendicular fallback;
+    //   2. among cylinder vertices on that nearest surface (within DEPTH_BAND of
+    //      the nearest depth), the one closest to the ray line.
+    // A pure min-perpendicular scan ignores depth (grabs the table behind); a
+    // pure nearest-depth scan biases toward the near edge — this does neither.
+    const PICK_RADIUS = 0.14;   // UI units (~object scale; matches old box size)
+    const DEPTH_BAND  = 0.20;   // UI units: depth window treated as one surface
+    // minDepth: ignore cloud points nearer than this along the ray. 0 for the
+    // 3-D canvas / agentview; for the wrist camera (mounted on the gripper) the
+    // caller passes the fingertip depth + margin so the gripper's own points
+    // can't win the nearest-surface pick. See pickPointCloudFromCamUV.
+    // requireCylinderHit: when true, skip the global min-perp fallback and return
+    // null unless the ray actually passes within PICK_RADIUS of a cloud point.
+    // Teleport-clicks leave it false (always snap somewhere); the hover preview
+    // sets it true so probing empty space reports "no cloud point" instead of
+    // snapping to a distant, unrelated vertex.
+    function pickCloudPointAlongRay(ox, oy, oz, dx, dy, dz, minDepth = 0, requireCylinderHit = false) {
+      const pos = pcGeo.attributes.position.array;
+      const n = pos.length / 3;
+      const r2 = PICK_RADIUS * PICK_RADIUS;
+
+      // Pass 1: nearest in-cylinder depth + global min-perp fallback.
+      let minProj = Infinity;                          // nearest surface depth
+      let bestPerp2 = Infinity, fx = 0, fy = 0, fz = 0; // fallback (click missed cloud)
+      for (let i = 0; i < n; i++) {
+        const px = pos[i*3], py = pos[i*3+1], pz = pos[i*3+2];
+        const vx = px - ox, vy = py - oy, vz = pz - oz;
+        const proj = vx*dx + vy*dy + vz*dz;
+        if (proj < minDepth) continue;                 // behind camera or on the gripper
+        const perp2 = vx*vx + vy*vy + vz*vz - proj*proj;
+        if (perp2 <= r2 && proj < minProj) minProj = proj;
+        if (perp2 < bestPerp2) { bestPerp2 = perp2; fx = px; fy = py; fz = pz; }
+      }
+
+      // Pass 2: most ray-centered vertex on that nearest surface.
+      if (minProj < Infinity) {
+        const maxProj = minProj + DEPTH_BAND;
+        let surfPerp2 = Infinity, sx = 0, sy = 0, sz = 0;
+        for (let i = 0; i < n; i++) {
+          const px = pos[i*3], py = pos[i*3+1], pz = pos[i*3+2];
+          const vx = px - ox, vy = py - oy, vz = pz - oz;
+          const proj = vx*dx + vy*dy + vz*dz;
+          if (proj < minDepth || proj > maxProj) continue;
+          const perp2 = vx*vx + vy*vy + vz*vz - proj*proj;
+          if (perp2 <= r2 && perp2 < surfPerp2) {
+            surfPerp2 = perp2; sx = px; sy = py; sz = pz;
+          }
+        }
+        if (surfPerp2 < Infinity) return new THREE.Vector3(sx, sy, sz);
+      }
+      if (requireCylinderHit) return null;             // hover preview: no real hit here
+      if (bestPerp2 < Infinity) return new THREE.Vector3(fx, fy, fz);
+      return null;
+    }
+
+    // Called on click-release: move gripper to the clicked point-cloud position.
+    function placeGripper(event) {
+      if (!isTranslationMode) return;
+      const r = buildRaycaster(event);
+      const O = r.ray.origin, D = r.ray.direction;   // D is unit-length
+      const p = pickCloudPointAlongRay(O.x, O.y, O.z, D.x, D.y, D.z);
+      if (p) {
+        cubeMesh.position.copy(p);
+        cubeMesh.visible = true;
+        moveSelectedObjectToPos(p);
+      }
+    }
+
+    // ── Mouse events ──────────────────────────────────────────────────────────
+    document.addEventListener('contextmenu', e => e.preventDefault());
+
+    document.addEventListener('mousedown', e => {
+      if (e.target !== renderer.domElement) return;  // ignore clicks on UI panels
+      if (e.button === 0) {
+        isMouseDown     = true;
+        mouseDownX      = e.clientX;
+        mouseDownY      = e.clientY;
+        isDraggingEmpty = !hitsGripper(e);   // only the gripper blocks orbit
+      } else if (e.button === 2) {
+        isRightMouseDown = true;
+      } else if (e.button === 1) {
+        isMiddleMouseDown = true;
+        e.preventDefault();
+      }
+    });
+
+    document.addEventListener('mouseup', e => {
+      if (e.button === 0) {
+        const dx = e.clientX - mouseDownX;
+        const dy = e.clientY - mouseDownY;
+        // Salient-point selection requires holding "s". Without it, a stray
+        // left-click (meant to orbit) won't teleport the gripper. Also only
+        // place when the click started on empty space — clicks on the gripper
+        // itself must not drop it onto whatever is behind it.
+        if (isDraggingEmpty && keys['s'] && Math.sqrt(dx * dx + dy * dy) < 5) placeGripper(e);
+        isMouseDown = false;
+        isDraggingEmpty = false;
+        arrowHelper.visible = false;
+      } else if (e.button === 2) { isRightMouseDown  = false; }
+      else if   (e.button === 1) { isMiddleMouseDown = false; }
+    });
+
+    let keys = {};
+
+    document.addEventListener('mousemove', e => {
+      if (!isMouseDown && !isRightMouseDown && !isMiddleMouseDown && !transformControl) return;
+      e.preventDefault();
+
+      // When rotation gizmo is active, let TransformControls own the drag
+      if (transformControl) { updateGuideCylinder(true); return; }
+
+      // Orbit: left-drag on empty space. Suppressed while "s" is held so a
+      // left-drag meant for salient-point placement doesn't swing the camera.
+      if (isMouseDown && isDraggingEmpty && !keys['s']) {
+        const offset = new THREE.Vector3().subVectors(camera.position, cameraTarget);
+        const sph = new THREE.Spherical().setFromVector3(offset);
+        sph.theta -= 0.005 * e.movementX;
+        sph.phi   -= 0.005 * e.movementY;
+        sph.makeSafe();
+        offset.setFromSpherical(sph);
+        camera.position.copy(cameraTarget).add(offset);
+        camera.lookAt(cameraTarget);
+        return;
+      }
+
+      // Pan: right-drag or middle-drag
+      if (isRightMouseDown || isMiddleMouseDown) {
+        const right = new THREE.Vector3();
+        camera.getWorldDirection(right);
+        right.cross(camera.up).normalize();
+        const pan = new THREE.Vector3()
+          .addScaledVector(right,      -e.movementX * 0.01)
+          .addScaledVector(camera.up,   e.movementY * 0.01);
+        camera.position.add(pan);
+        cameraTarget.add(pan);
+        camera.lookAt(cameraTarget);
+        return;
+      }
+
+      // Translate gripper: left-drag on gripper (with optional axis constraint)
+      if (isMouseDown && !isDraggingEmpty && selectedObject && isTranslationMode) {
+        const right   = new THREE.Vector3();
+        const up      = new THREE.Vector3();
+        const forward = new THREE.Vector3();
+        camera.getWorldDirection(forward);
+        camera.up.normalize();
+        right.crossVectors(camera.up, forward).normalize();
+        up.crossVectors(forward, right).normalize();
+
+        let mv = new THREE.Vector3()
+          .addScaledVector(right, -e.movementX)
+          .addScaledVector(up,   -e.movementY);
+
+        const point = controlPoints[controlPoints.indexOf(selectedObject)].position;
+
+        if      (keys['x']) { mv.set(mv.x, 0, 0);     setArrow(mv.x, 0, 0); }
+        else if (keys['z']) { mv.set(0, mv.y, 0);     setArrow(0, mv.y, 0); }
+        else if (keys['p']) { mv.set(mv.x, 0, mv.z);  setArrow(mv.x, 0, mv.z); }
+        else if (keys['y']) { mv.set(0, 0, mv.z);     setArrow(0, 0, mv.z); }
+        else                { arrowHelper.visible = false; }
+
+        arrowHelper.position.copy(point);
+        point.add(mv.multiplyScalar(0.006));
+        updateCurvePath();
+      }
+    });
+
+    function updateCamFeed(elemId, bytes) {
+      if (!bytes) return;
+      const img = document.getElementById(elemId);
+      if (!img) return;
+      const blob = new Blob([bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)], { type: 'image/jpeg' });
+      const newUrl = URL.createObjectURL(blob);
+      if (img._blobUrl) URL.revokeObjectURL(img._blobUrl);
+      img._blobUrl = newUrl;
+      img.src = newUrl;
+    }
+
+    function setArrow(x, y, z) {
+      const dir = new THREE.Vector3(x, y, z);
+      if (dir.length() > 1e-6) {
+        arrowHelper.setDirection(dir.normalize());
+        arrowHelper.visible = true;
+      } else {
+        arrowHelper.visible = false;
+      }
+    }
+
+    function zoomCameraAtPointer(event) {
+      const ray = buildRaycaster(event).ray;
+      const viewDir = new THREE.Vector3();
+      camera.getWorldDirection(viewDir);
+
+      const anchor = new THREE.Vector3();
+      const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(viewDir, cameraTarget);
+      if (!ray.intersectPlane(plane, anchor)) anchor.copy(cameraTarget);
+
+      const distance = camera.position.distanceTo(cameraTarget);
+      const zoomIn = event.deltaY < 0;
+      const step = zoomIn ? Math.min(0.3, Math.max(0, distance - 0.3)) : 0.3;
+      if (step <= 0) return;
+
+      const alpha = (zoomIn ? 1 : -1) * Math.min(0.2, step / Math.max(distance, 1e-6));
+      camera.position.lerp(anchor, alpha);
+      cameraTarget.lerp(anchor, alpha);
+      camera.lookAt(cameraTarget);
+    }
+
+    document.addEventListener('wheel', e => {
+      if (e.target !== renderer.domElement) return;
+      e.preventDefault();
+      zoomCameraAtPointer(e);
+    }, { passive: false });
+
+    // ── Keyboard ──────────────────────────────────────────────────────────────
+    document.addEventListener('keydown', e => {
+      keys[e.key.toLowerCase()] = true;
+
+      // Axis / guide cylinders (no early return — just visual feedback)
+      if (['x','y','z','p','a'].includes(e.key.toLowerCase()) && selectedObject && !rotationMode) {
+        updateGuideCylinder(true);
+      }
+
+      // Escape: always exits rotation mode
+      if (e.key === 'Escape') { e.preventDefault(); exitRotationMode(); return; }
+
+      // H: restore initial camera view
+      if (e.key.toLowerCase() === 'h') { e.preventDefault(); resetCameraView(); return; }
+
+      // Q (hold): peek at the rotate gizmo + gripper approach axis while held.
+      // keydown auto-repeats, but setGizmoHold is idempotent.
+      if (e.key.toLowerCase() === 'q') { e.preventDefault(); setGizmoHold(true); return; }
+
+      // R: enter rotation mode
+      if (e.key === 'r') {
+        rotationMode = true; isTranslationMode = false;
+        rotationAxis = null; currentAngleInput = '';
+        setMode('Rotation', '#f59e0b');
+        showGizmo();
+        return;
+      }
+
+      // T: reset the blue target gripper back onto the real gripper's pose
+      //    (mirrors the gripper_reset MCP tool; works in any mode, so it
+      //    sits before the rotation-mode capture below).
+      if (e.key.toLowerCase() === 't') {
+        e.preventDefault();
+        snapSelectedToRealGripper();
+        return;
+      }
+
+      // Rotation mode: axis selection + numeric angle input
+      if (rotationMode && selectedObject) {
+        if (['x','y','z'].includes(e.key)) {
+          rotationAxis = e.key; currentAngleInput = '';
+          if (transformControl) transformControl.detach();
+          return;
+        }
+        if (rotationAxis && (/^[0-9]$/.test(e.key) || e.key === '-' || e.key === '.')) {
+          currentAngleInput += e.key;
+          return;
+        }
+        if (rotationAxis && e.key === 'Enter' && currentAngleInput) {
+          rotateSelectedObject(rotationAxis, parseFloat(currentAngleInput) * Math.PI / 180);
+          exitRotationMode(); return;
+        }
+        // In rotation mode all other keys are ignored
+        return;
+      }
+
+      // G: toggle gripper open/closed
+      if (e.key === 'g') {
+        e.preventDefault();
+        if (!selectedObject) return;
+        const idx    = controlPoints.indexOf(selectedObject);
+        const curUrl = meshUrls[idx];
+        const newUrl = curUrl.includes('_closed')
+          ? 'http://localhost:8100/' + gripperName + '.obj'
+          : 'http://localhost:8100/' + gripperName + '_closed.obj';
+        const pos = selectedObject.position.clone();
+        const rot = selectedObject.rotation.clone();
+        // Load-then-swap: loadObject removes the old mesh only once the new one is
+        // ready, and ignores the press if a swap for this gripper is already running.
+        loadObject(newUrl, pos, rot, idx, selectedObject);
+        return;
+      }
+
+      // F / B: move along gripper's approach axis
+      if (keys['f'] || keys['b']) {
+        if (!selectedObject) return;
+        updateGuideCylinder(true);
+        const dir = new THREE.Vector3(0, keys['f'] ? -0.06 : 0.06, 0)
+          .applyQuaternion(selectedObject.quaternion);
+        controlPoints[controlPoints.indexOf(selectedObject)].position.add(dir);
+        updateCurvePath();
+      }
+
+      // C: snap forward along gripper's approach axis to the last click target,
+      //    with a small overshoot for secure grasping.
+      if (e.key === 'c') {
+        snapForwardToClick();
+      }
+
+    });
+
+    document.addEventListener('keyup', e => {
+      keys[e.key.toLowerCase()] = false;
+      if (e.key.toLowerCase() === 'q') setGizmoHold(false);
+      updateGuideCylinder(false);
+      arrowHelper.visible = false;
+    });
+
+    // ── Q-hold: show rotate gizmo + gripper approach axis while held ───────────
+    // Driven by the 'q' key (keydown/keyup).
+    let gizmoHeld = false;
+
+    function setGizmoHold(on) {
+      if (on === gizmoHeld) return;
+      gizmoHeld = on;
+      updateGuideCylinder(on);   // also show the gripper's local approach axis
+      // Don't disturb an active rotation session (it owns the gizmo); only
+      // create/destroy the gizmo for the standalone peek.
+      if (!rotationMode) { on ? showGizmo() : hideGizmo(); }
+    }
+
+    // Releasing the key outside the window won't fire keyup, so also clear the
+    // hold when the window loses focus.
+    window.addEventListener('blur', () => setGizmoHold(false));
+
+    function rotateSelectedObject(axis, angle) {
+      if (axis === 'x') selectedObject.rotateX(angle);
+      else if (axis === 'z') selectedObject.rotateY(angle);
+      else if (axis === 'y') selectedObject.rotateZ(angle);
+      updateCurvePath();
+    }
+
+    // Decorate each rotation ring with (a) a small arrowhead marking the
+    // positive (right-hand-rule) spin direction and (b) a text label. Both are
+    // parented to the ring mesh, so they inherit its per-frame pose / scale /
+    // visibility and stay glued to the circle.
+    //   The gizmo's ring NAMES are Three.js axes (Y-up), but this app speaks the
+    //   robot frame (Z-up): robot Y ↔ Three.js Z, robot Z ↔ Three.js Y (see the
+    //   gizmoScene axis mapping and rotateSelectedObject). So each ring is
+    //   relabelled and recoloured to the robot axis it actually spins, matching
+    //   the corner orientation gizmo's arrows.
+    //   In this build the rings have radius 0.5, geometry baked in the object-
+    //   local frame, and +rotation is RH about each Three.js axis: about +X
+    //   takes +Y→+Z, about +Y takes +Z→+X, about +Z takes +X→+Y.
+    function addRingArrows(rotateGizmo) {
+      const R = 0.5;
+      // Label sits just outside the ring, kept clear of both cones (which are on
+      // +Z and +X). [ Three.js ringName, robot label, robot colour (hex),
+      //   label colour (CSS), cone point, cone tangent (+spin), label point ]
+      const specs = [
+        ['X', 'X', 0xff4444, '#ff6b6b', new THREE.Vector3(0, 0, R), new THREE.Vector3(0, -1, 0), new THREE.Vector3(0,  R * 1.4, 0)],
+        ['Y', 'Z', 0x3b82f6, '#60a5fa', new THREE.Vector3(0, 0, R), new THREE.Vector3(1,  0, 0), new THREE.Vector3(-R * 1.4, 0, 0)],
+        ['Z', 'Y', 0x22c55e, '#4ade80', new THREE.Vector3(R, 0, 0), new THREE.Vector3(0,  1, 0), new THREE.Vector3(0, -R * 1.4, 0)],
+      ];
+      specs.forEach(([ringName, label, colorHex, labelColor, pos, tan, labelPos]) => {
+        const ring = rotateGizmo.getObjectByName(ringName);
+        if (!ring) return;
+        // Recolour the ring line to the robot-frame colour. TransformControls
+        // caches the base colour in material._color and re-applies it each
+        // frame, so set both to make the change stick.
+        if (ring.material) {
+          ring.material.color.setHex(colorHex);
+          ring.material._color = ring.material.color.clone();
+        }
+        const cone = new THREE.Mesh(
+          new THREE.ConeGeometry(0.07, 0.22, 16),
+          new THREE.MeshBasicMaterial({ color: colorHex, depthTest: false, depthWrite: false, transparent: true })
+        );
+        cone.renderOrder = Infinity;
+        cone.position.copy(pos);
+        cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tan);
+        ring.add(cone);
+
+        const labelSprite = makeAxisLabel(label, labelColor);
+        labelSprite.scale.set(0.34, 0.22, 1);
+        labelSprite.position.copy(labelPos);
+        labelSprite.renderOrder = Infinity;
+        ring.add(labelSprite);
+      });
+    }
+
+    // Show / hide the rotate gizmo (TransformControls), used by rotation mode.
+    function showGizmo() {
+      if (!selectedObject) return;
+      if (!transformControl) {
+        transformControl = new THREE.TransformControls(camera, renderer.domElement);
+        transformControl.setSize(0.75);
+        // Remove the outer yellow screen-space (E) rotation ring so only the
+        // X/Y/Z circles remain. Collect first, then remove, to avoid mutating
+        // the tree mid-traversal.
+        const eHandles = [];
+        transformControl.traverse(obj => { if (obj.name === 'E') eHandles.push(obj); });
+        eHandles.forEach(obj => obj.parent && obj.parent.remove(obj));
+        addRingArrows(transformControl._gizmo.gizmo['rotate']);
+        scene.add(transformControl);
+      }
+      transformControl.attach(selectedObject);
+      transformControl.setSpace('local');
+      transformControl.setMode('rotate');
+    }
+
+    function hideGizmo() {
+      if (transformControl) {
+        scene.remove(transformControl);
+        transformControl.detach();
+        transformControl.dispose();
+        transformControl = null;
+      }
+    }
+
+    function exitRotationMode() {
+      isTranslationMode = true; rotationMode = false;
+      rotationAxis = null; currentAngleInput = '';
+      setMode('Translation', '#60a5fa');
+      hideGizmo();
+    }
+
+    // ── Buttons ───────────────────────────────────────────────────────────────
+    document.getElementById('btn-record').addEventListener('click', function() {
+      sendPositionAndOrientation();
+      this.classList.add('flash');
+      setTimeout(() => this.classList.remove('flash'), 250);
+      // Drop focus so a later Enter (e.g. ending a "r y 10 ⏎" rotation) doesn't
+      // re-activate this button via the browser's default focused-button click.
+      this.blur();
+    });
+
+    document.getElementById('btn-end').addEventListener('click', function() {
+      demoDone = true;
+      sendPositionAndOrientation();
+      demoDone = false;
+      this.blur();
+    });
+
+    function sendPositionAndOrientation() {
+      if (sendSocket.readyState !== WebSocket.OPEN) { console.error('WebSocket not open'); return; }
+      const payload = controlPoints.map((obj, i) => {
+        const q   = new THREE.Quaternion().setFromEuler(obj.rotation);
+        const ori = new THREE.Euler().setFromQuaternion(q, 'YZX');
+        return {
+          done: demoDone,
+          click:       { x: cubeMesh.position.x, y: cubeMesh.position.y, z: cubeMesh.position.z },
+          position:    { x: obj.position.x,       y: obj.position.y,      z: obj.position.z },
+          orientation: { x: ori.x,                y: ori.y,               z: ori.z },
+          url: meshUrls[i],
+        };
+      });
+      sendSocket.send(JSON.stringify(payload));
+    }
+
+    // ── WebSockets ────────────────────────────────────────────────────────────
+    const recvSocket = new WebSocket('ws://localhost:8101');
+    const sendSocket = new WebSocket('ws://localhost:8102');
+
+    recvSocket.addEventListener('open', () => console.log('recv socket open'));
+    sendSocket.addEventListener('open', () => console.log('send socket open'));
+
+    // Python sends float32 arrays as raw bytes for speed; interpret them zero-copy.
+    function bytesToFloat32(u8) {
+      const buf = new ArrayBuffer(u8.byteLength);
+      new Uint8Array(buf).set(u8);
+      return new Float32Array(buf);
+    }
+
+    // Snap the selected (blue) target gripper onto the latest real gripper pose
+    // (position, orientation, open/closed) received over the websocket — the pose
+    // the target starts at after every execute. Reused by the update_ui handler
+    // below and by the MCP gripper_reset tool (via page.evaluate), so the
+    // agent can experiment with the edit tools then return to the real pose.
+    function snapSelectedToRealGripper() {
+      if (!selectedObject) return { status: 'no_selection' };
+      if (!lastFingertipUI || !lastEeEulerUI || !lastGripperAction) {
+        return { status: 'no_real_pose' };
+      }
+      // Works in any mode: if a rotation gizmo is open, exit rotation mode first
+      // so the open/closed mesh swap below can't strand the gizmo on the removed
+      // mesh (loadObject replaces selectedObject).
+      if (rotationMode || (typeof transformControl !== 'undefined' && transformControl)) {
+        exitRotationMode();
+      }
+      selectedObject.position.copy(lastFingertipUI);
+      const euler = new THREE.Euler(
+        lastEeEulerUI[0], lastEeEulerUI[2], -lastEeEulerUI[1], 'YZX'
+      );
+      selectedObject.quaternion.setFromEuler(euler);
+
+      const idx      = controlPoints.indexOf(selectedObject);
+      const curUrl   = meshUrls[idx];
+      const wantOpen = !lastGripperAction[0];
+      const isOpen   = !curUrl.includes('_closed');
+      let swapped = false;
+      if (wantOpen !== isOpen) {
+        const pos    = selectedObject.position.clone();
+        const rot    = selectedObject.rotation.clone();
+        const newUrl = wantOpen
+          ? 'http://localhost:8100/' + gripperName + '.obj'
+          : 'http://localhost:8100/' + gripperName + '_closed.obj';
+        // Load-then-swap (see loadObject); never remove before the replacement loads.
+        loadObject(newUrl, pos, rot, idx, selectedObject);
+        swapped = true;
+      }
+      updateCurvePath();
+      return { status: 'ok', wantOpen: wantOpen, swapped: swapped };
+    }
+
+    recvSocket.addEventListener('message', async e => {
+      const data = msgpack.decode(new Uint8Array(await e.data.arrayBuffer()));
+
+      // `update_ui` is true only on the frame sent after a waypoint execution
+      // finishes (move_to returns); intermediate stream frames are false. The
+      // MCP server latches this counter to snapshot exactly when a waypoint is
+      // done instead of guessing with a fixed sleep.
+      if (data.update_ui) {
+        window.__waypointDoneCount = (window.__waypointDoneCount || 0) + 1;
+      }
+
+      const newPos  = bytesToFloat32(data.positions);
+      const newCol  = bytesToFloat32(data.colors);
+      // Brighten point cloud colors via gamma curve: lifts midtones without
+      // washing out highlights (which a linear gain+clamp would do).
+      const GAMMA = 0.65;
+      for (let i = 0; i < newCol.length; i++) {
+        newCol[i] = Math.pow(newCol[i], GAMMA);
+      }
+      const geo     = pointCloud.geometry;
+      const posAttr = geo.attributes.position;
+
+      if (newPos.length !== posAttr.array.length) {
+        geo.setAttribute('position', new THREE.BufferAttribute(newPos, 3));
+        geo.setAttribute('color',    new THREE.BufferAttribute(newCol, 3));
+      } else {
+        posAttr.array.set(newPos); posAttr.needsUpdate = true;
+        geo.attributes.color.array.set(newCol);
+        geo.attributes.color.needsUpdate = true;
+      }
+      maybeInitializeCameraTarget(newPos);
+      renderer.domElement.style.visibility = 'visible';
+      updateInstancedMeshPositions();
+
+      // Update camera feed images and calibration
+      if (data.cam_images) {
+        updateCamFeed('cam-agentview', data.cam_images.agentview);
+        updateCamFeed('cam-wrist',     data.cam_images.wrist);
+      }
+      if (data.cam_info) camInfo = data.cam_info;
+      // Track the real gripper's fingertip (UI frame). It ships in every message
+      // paired with cam_info (same obs), so it stays consistent with the wrist
+      // extrinsic even while the blue target gripper is being edited away. Used
+      // to gate the gripper's own points out of wrist-view ray picks.
+      if (data.fingertip_pos_ui) {
+        lastFingertipUI = new THREE.Vector3(
+          data.fingertip_pos_ui[0], data.fingertip_pos_ui[1], data.fingertip_pos_ui[2]
+        );
+        lastEeEulerUI     = data.ee_euler_ui;
+        lastGripperAction = data.gripper_action;
+      }
+
+      // After a waypoint executes, snap the blue target gripper onto the real
+      // gripper's new pose (the same logic gripper_reset reuses on demand).
+      if (selectedObject && data.update_ui) {
+        snapSelectedToRealGripper();
+      }
+    });
+
+    // ── Screenshot server (port 8767) — MCP server requests canvas snapshots ──
+    (function connectScreenshotWs() {
+      const ssWs = new WebSocket('ws://localhost:8767');
+      ssWs.addEventListener('message', () => {
+        renderFrame();   // ensure latest frame (incl. corner gizmo)
+        ssWs.send(renderer.domElement.toDataURL('image/jpeg', 0.85));
+      });
+      ssWs.addEventListener('close', () => setTimeout(connectScreenshotWs, 2000));
+    })();
+
+    // ── Camera-image click → place keypoint via ray-cast ─────────────────────
+    // Given a normalized (uFrac, vFrac) in [0,1] in the named camera image,
+    // unproject through that camera's K, transform the ray into UI frame,
+    // and return the point-cloud point closest to the ray (UI-frame coords),
+    // or null if no point is in front of the camera.
+    //
+    // Kept as a pure function so it can be driven from both DOM clicks and
+    // the MCP server's point_cam path with full float precision (no display-
+    // pixel quantization).
+    function pickPointCloudFromCamUV(camLabel, uFrac, vFrac, requireCylinderHit = false) {
+      const info = camInfo[camLabel];
+      if (!info) return null;
+
+      // Source-image pixel coords (224-pixel space), kept as floats.
+      const u = uFrac * info.img_size;
+      const v = vFrac * info.img_size;
+
+      // Unproject pixel to camera-frame ray: K^{-1} * [u, v, 1]
+      const K  = info.K;                      // row-major 3×3
+      const f  = K[0], cx = K[2], cy = K[5]; // K[0][0], K[0][2], K[1][2]
+      const dc = [(u - cx) / f, (v - cy) / f, 1.0];
+
+      // Camera-to-world via extrinsics E (row-major 4×4)
+      const E = info.E;
+      const ox = E[3], oy = E[7], oz = E[11];                          // origin
+      const wx = E[0]*dc[0]+E[1]*dc[1]+E[2]*dc[2];
+      const wy = E[4]*dc[0]+E[5]*dc[1]+E[6]*dc[2];
+      const wz = E[8]*dc[0]+E[9]*dc[1]+E[10]*dc[2];                    // direction
+
+      // Robot-frame → UI-frame: translate z by -UI_Z_OFFSET, rotate Rx(-90°), scale ×10
+      // Rx(-90°): [x,y,z] → [x, z, -y]
+      const toUI = (x, y, z, isDir) => {
+        const zOff = isDir ? 0 : -UI_Z_OFFSET;
+        return [10*x, 10*(z + zOff), -10*y];
+      };
+      const [oui_x, oui_y, oui_z] = toUI(ox, oy, oz, false);
+      const [dui_x, dui_y, dui_z] = toUI(wx, wy, wz, true);
+      const dLen = Math.sqrt(dui_x*dui_x + dui_y*dui_y + dui_z*dui_z);
+      const dnx = dui_x/dLen, dny = dui_y/dLen, dnz = dui_z/dLen;
+
+      // The wrist camera is mounted on the gripper, so the gripper's own finger
+      // points (baked into the agentview-derived cloud) sit right in front of it
+      // and would win the nearest-surface pick — clicking near the fingers then
+      // back-projects onto the gripper itself. Gate them out: skip anything
+      // nearer than the real fingertips (projected onto this ray) plus a small
+      // margin to clear the finger pads. The agentview camera isn't on the
+      // gripper, so it needs no gate (minDepth stays 0).
+      const WRIST_GRIPPER_MARGIN = 0.3; // UI units (~3 cm) below the fingertips
+      let minDepth = 0;
+      if (camLabel === 'wrist' && lastFingertipUI) {
+        const fingertipDepth =
+          (lastFingertipUI.x - oui_x) * dnx +
+          (lastFingertipUI.y - oui_y) * dny +
+          (lastFingertipUI.z - oui_z) * dnz;
+        minDepth = Math.max(0, fingertipDepth + WRIST_GRIPPER_MARGIN);
+      }
+
+      // Nearest in-front cloud point along the camera ray (cylinder pick,
+      // depth-ordered so a foreground object wins over the table behind it).
+      const p = pickCloudPointAlongRay(oui_x, oui_y, oui_z, dnx, dny, dnz, minDepth, requireCylinderHit);
+      if (!p) return null;
+      return { x: p.x, y: p.y, z: p.z };
+    }
+
+    // Place the gripper at the nearest cloud point along the ray from
+    // normalized (uFrac, vFrac) in the named camera. Returns the UI-frame
+    // hit point, or null if the ray missed the cloud. Exposed on window so
+    // the MCP server can drive it via _page.evaluate without going through
+    // a synthetic mouse click (which would pixel-quantize the coordinates).
+    window.placeGripperFromCamUV = function(camLabel, uFrac, vFrac) {
+      const hit = pickPointCloudFromCamUV(camLabel, uFrac, vFrac);
+      if (!hit) return null;
+      const p = new THREE.Vector3(hit.x, hit.y, hit.z);
+      cubeMesh.position.copy(p);
+      cubeMesh.visible = true;
+      moveSelectedObjectToPos(p);
+      return hit;
+    };
+
+    function handleCamImageClick(e, imgEl, camLabel) {
+      const rect = imgEl.getBoundingClientRect();
+      const uFrac = (e.clientX - rect.left) / rect.width;
+      const vFrac = (e.clientY - rect.top)  / rect.height;
+      window.placeGripperFromCamUV(camLabel, uFrac, vFrac);
+    }
+
+    // Read-only preview of the salient point a click at browser pixel (x, y)
+    // would select — runs the exact same pick the real click uses, but does
+    // NOT move cubeMesh or the gripper. Returns { surface, point } where point
+    // is the UI-frame hit ({x,y,z}) or null (ray missed / not a placement
+    // surface). surface is the camera label, 'pointcloud', 'gripper' (a click
+    // here drags, not places), or 'other'. Drives the MCP server's hover tool.
+    window.previewContactPointUI = function(x, y) {
+      const el = document.elementFromPoint(x, y);
+      const camAgent = document.getElementById('cam-agentview');
+      const camWrist = document.getElementById('cam-wrist');
+      if (el === camAgent || el === camWrist) {
+        const camLabel = el === camAgent ? 'agentview' : 'wrist';
+        const rect = el.getBoundingClientRect();
+        const hit = pickPointCloudFromCamUV(
+          camLabel, (x - rect.left) / rect.width, (y - rect.top) / rect.height, true);
+        return { surface: camLabel, point: hit };
+      }
+      if (typeof renderer !== 'undefined' && renderer && el === renderer.domElement &&
+          typeof camera !== 'undefined' && camera &&
+          typeof selectedObject !== 'undefined' && selectedObject) {
+        const ev = { clientX: x, clientY: y };
+        if (hitsGripper(ev)) return { surface: 'gripper', point: null };
+        const r = buildRaycaster(ev);
+        const O = r.ray.origin, D = r.ray.direction;
+        const p = pickCloudPointAlongRay(O.x, O.y, O.z, D.x, D.y, D.z, 0, true);
+        return { surface: 'pointcloud', point: p ? { x: p.x, y: p.y, z: p.z } : null };
+      }
+      return { surface: 'other', point: null };
+    };
+
+    document.getElementById('cam-agentview').addEventListener('click', e => {
+      handleCamImageClick(e, e.currentTarget, 'agentview');
+    });
+    document.getElementById('cam-wrist').addEventListener('click', e => {
+      handleCamImageClick(e, e.currentTarget, 'wrist');
+    });
+
+    // ── Render loop ───────────────────────────────────────────────────────────
+    (function animate() { requestAnimationFrame(animate); renderFrame(); })();
+  </script>
+</body>
+</html>
