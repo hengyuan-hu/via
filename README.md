@@ -14,7 +14,7 @@ git clone https://github.com/hengyuan-hu/via.git
 cd via
 git submodule update --init --recursive           # LIBERO
 
-uv venv --python 3.10 .venv
+uv venv --python 3.10 --prompt via .venv
 uv sync
 .venv/bin/python -m playwright install chromium    # browser for the MCP server (one-time)
 ```
@@ -39,21 +39,24 @@ echo N | python -c "import libero.libero"
 
 ## Usage
 
-`source set_env.sh` once per shell (activates `.venv`, sets `PYTHONPATH` for the repo root and
-LIBERO).
+Note: `source set_env.sh` once per shell
+(activates `.venv`, sets `PYTHONPATH` for the repo root and LIBERO).
 
-List the available simulation tasks or start an interactive recording:
+Start an interactive run:
 
 ```shell
-python -m via.record_sim --list-tasks
+# in one terminal
 python -m via.record_sim --task stack
+
+# in another terminal
+claude  # or codex
 ```
 
-List the configured evaluations or run one across its configured seeds:
+Run an eval with multiple seeds:
 
 ```shell
-python -m via.run_eval
-python -m via.run_eval t-block-min-opus
+# -j3 means running 3 seeds in parallel
+python -m via.run_eval stack-opus-dev -j3
 ```
 
 Evaluation runs also require the CLI for the configured harness (`claude` or `codex`) to be
