@@ -70,3 +70,7 @@ from the same `.venv` via `.mcp.json`; you do not run it by hand.
 - `pyproject.toml` / `uv.lock` — the single 3.10 environment (sim stack + MCP server).
 - `set_env.sh` — activates `.venv` and sets `PYTHONPATH` (repo root + LIBERO submodule).
 - `third_party/LIBERO` — LIBERO submodule (on `PYTHONPATH`, not pip-installed).
+
+## License
+
+This project is released under the [MIT License](LICENSE).
